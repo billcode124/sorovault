@@ -1,0 +1,64 @@
+name: Dependency review
+
+# Reviews what a pull request adds before it lands: a dependency with a known
+# vulnerability, or one whose licence the project does not accept. The check
+# compares the pull request against its base branch, so it only ever fails on
+# what the pull request introduced — a vulnerability that was already there is
+# somebody else's problem.
+#
+# The action reads the repository's dependency graph, so the graph has to be
+# enabled for it to have anything to review (Settings -> Code security ->
+# Dependency graph). Until it is, the check has no diff to look at.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # A pull request that introduces a moderate or worse advisory
+          # fails. Low-severity advisories are still reported, but they do
+          # not block: they are common enough that blocking on them teaches
+          # maintainers to ignore the check.
+          fail-on-severity: moderate
+          # Go modules are runtime scope; the npm packages under
+          # internal/codegen/testdata are development scope, and are reviewed
+          # too even though they only ever run in CI.
+          fail-on-scopes: runtime,development
+          # Licence policy. SoroVault is Apache-2.0, so only permissive
+          # licences that can be redistributed inside an Apache-2.0 project
+          # are accepted. The list covers every licence the dependency graph
+          # reports today: Apache-2.0 (cobra, the Stellar SDK), MIT (chi,
+          # pgx, testify and most of their dependencies), the two- and
+          # three-clause BSDs (golang.org/x/*, pkg/errors, creachadair/*,
+          # pflag) and ISC (stellar/go-xdr) for the Go modules, plus
+          # Apache-2.0 for @stellar/stellar-sdk and typescript, and MIT for
+          # buffer on the npm side. A dual-licensed module has to have every
+          # half of its expression listed, which is why go.yaml.in/yaml/v3
+          # ("Apache-2.0 AND MIT") is covered twice over. Copyleft and
+          # source-available licences (GPL, LGPL, AGPL, MPL, ...) are
+          # deliberately absent: a pull request that adds one fails here and
+          # needs a maintainer to decide, rather than being merged unnoticed.
+          allow-licenses: >-
+            Apache-2.0,
+            MIT,
+            BSD-2-Clause,
+            BSD-3-Clause,
+            ISC
+          # The dependency graph needs a moment to catch up with a freshly
+          # pushed commit. Waiting for it is better than reporting a clean
+          # review of a graph that has not been written yet.
+          retry-on-snapshot-warnings: true
