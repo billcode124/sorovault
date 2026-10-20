@@ -36,28 +36,60 @@ jobs:
           fail-on-severity: moderate
           # Go modules are runtime scope; the npm packages under
           # internal/codegen/testdata are development scope, and are reviewed
-          # too even though they only ever run in CI.
+          # too even though they only ever run in CI. "unknown" is left out
+          # on purpose: it is the scope GitHub falls back to when it cannot
+          # place a package, and a package it cannot place is a package whose
+          # scope we cannot vouch for either.
           fail-on-scopes: runtime,development
-          # Licence policy. SoroVault is Apache-2.0, so only permissive
-          # licences that can be redistributed inside an Apache-2.0 project
-          # are accepted. The list covers every licence the dependency graph
-          # reports today: Apache-2.0 (cobra, the Stellar SDK), MIT (chi,
-          # pgx, testify and most of their dependencies), the two- and
-          # three-clause BSDs (golang.org/x/*, pkg/errors, creachadair/*,
-          # pflag) and ISC (stellar/go-xdr) for the Go modules, plus
-          # Apache-2.0 for @stellar/stellar-sdk and typescript, and MIT for
-          # buffer on the npm side. A dual-licensed module has to have every
-          # half of its expression listed, which is why go.yaml.in/yaml/v3
-          # ("Apache-2.0 AND MIT") is covered twice over. Copyleft and
-          # source-available licences (GPL, LGPL, AGPL, MPL, ...) are
-          # deliberately absent: a pull request that adds one fails here and
-          # needs a maintainer to decide, rather than being merged unnoticed.
+          # Licence policy. SoroVault is Apache-2.0, so the list is the
+          # permissive licences that can be redistributed inside an
+          # Apache-2.0 project. It covers every licence the dependency graph
+          # reports today: Apache-2.0 (cobra, the Stellar SDK, mousetrap),
+          # MIT (chi, pgx, testify, lib/pq and most of their dependencies),
+          # BSD-2-Clause (pkg/errors, creachadair/mds) and BSD-3-Clause
+          # (pflag, creachadair/jrpc2, golang.org/x/*) for the Go modules,
+          # ISC for stellar/go-xdr, and Apache-2.0 for @stellar/stellar-sdk
+          # and typescript plus MIT for buffer on the npm side.
+          #
+          # A dual-licensed module is reported as an SPDX expression, and an
+          # expression is only satisfied when every licence in it is on the
+          # list — so go.yaml.in/yaml/v3, which is "Apache-2.0 AND MIT", is
+          # covered by having both halves here.
+          #
+          # Copyleft and source-available licences (GPL, LGPL, AGPL, MPL,
+          # ...) are deliberately absent: a pull request that adds one fails
+          # here and needs a maintainer to decide, rather than being merged
+          # unnoticed.
           allow-licenses: >-
             Apache-2.0,
             MIT,
             BSD-2-Clause,
             BSD-3-Clause,
             ISC
+          # Four Go modules whose licence GitHub cannot classify. The
+          # detector matches licence templates against the text of a
+          # repository's LICENSE file, and these four all decorate the
+          # standard text enough to defeat it — an "Original Work / Modified
+          # Work" copyright block on golang-migrate, two copyright lines on
+          # klauspost/compress, and so on — so the graph reports no licence
+          # for them and the action lists them as unlicensed.
+          #
+          # Their licences were read by hand instead, and all four are
+          # already permitted above: golang-migrate/migrate and lib/pq are
+          # MIT, creachadair/mds is BSD-2-Clause and klauspost/compress is
+          # BSD-3-Clause. Exempting them keeps a package whose licence the
+          # detector cannot read from ever resolving to something outside
+          # the list.
+          #
+          # The trade-off is that a licence change inside these four modules
+          # would not be caught automatically, so their next version bump
+          # still wants a human eye on it. The npm packages need no such
+          # exemption: the registry states their licence outright.
+          allow-dependencies-licenses: >-
+            pkg:golang/github.com/golang-migrate/migrate/v4,
+            pkg:golang/github.com/creachadair/mds,
+            pkg:golang/github.com/klauspost/compress,
+            pkg:golang/github.com/lib/pq
           # The dependency graph needs a moment to catch up with a freshly
           # pushed commit. Waiting for it is better than reporting a clean
           # review of a graph that has not been written yet.
