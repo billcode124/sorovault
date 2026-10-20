@@ -46,10 +46,11 @@ jobs:
           # Apache-2.0 project. It covers every licence the dependency graph
           # reports today: Apache-2.0 (cobra, the Stellar SDK, mousetrap),
           # MIT (chi, pgx, testify, lib/pq and most of their dependencies),
-          # BSD-2-Clause (pkg/errors, creachadair/mds) and BSD-3-Clause
-          # (pflag, creachadair/jrpc2, golang.org/x/*) for the Go modules,
-          # ISC for stellar/go-xdr, and Apache-2.0 for @stellar/stellar-sdk
-          # and typescript plus MIT for buffer on the npm side.
+          # BSD-2-Clause (pkg/errors) and BSD-3-Clause (pflag,
+          # creachadair/jrpc2, creachadair/mds, golang.org/x/*) for the Go
+          # modules, ISC for stellar/go-xdr, and Apache-2.0 for
+          # @stellar/stellar-sdk and typescript plus MIT for buffer on the
+          # npm side.
           #
           # A dual-licensed module is reported as an SPDX expression, and an
           # expression is only satisfied when every licence in it is on the
