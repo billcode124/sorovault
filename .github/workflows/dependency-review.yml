@@ -74,8 +74,8 @@ jobs:
           # "Original Work / Modified Work" copyright block, lib/pq a
           # "Portions Copyright" line, creachadair/mds a rewritten BSD
           # header, and klauspost/compress a second Apache-2.0 section for
-          # the gzhttp files it carries. The graph reports NOASSERTION for
-          # all four, which the action treats as unlicensed and fails on.
+          # the gzhttp files it carries. The graph reports no licence for
+          # them, so the action lists them as unlicensed.
           #
           # Their licences were read by hand instead, and all four are
           # already permitted above: golang-migrate/migrate and lib/pq are
