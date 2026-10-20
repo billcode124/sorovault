@@ -68,18 +68,20 @@ jobs:
             ISC
           # Four Go modules whose licence GitHub cannot classify. The
           # detector matches licence templates against the text of a
-          # repository's LICENSE file, and these four all decorate the
-          # standard text enough to defeat it — an "Original Work / Modified
-          # Work" copyright block on golang-migrate, two copyright lines on
-          # klauspost/compress, and so on — so the graph reports no licence
-          # for them and the action lists them as unlicensed.
+          # repository's LICENSE file, and these four all carry enough
+          # beyond the standard text to defeat it: golang-migrate keeps an
+          # "Original Work / Modified Work" copyright block, lib/pq a
+          # "Portions Copyright" line, creachadair/mds a rewritten BSD
+          # header, and klauspost/compress a second Apache-2.0 section for
+          # the gzhttp files it carries. The graph reports NOASSERTION for
+          # all four, which the action treats as unlicensed and fails on.
           #
           # Their licences were read by hand instead, and all four are
           # already permitted above: golang-migrate/migrate and lib/pq are
-          # MIT, creachadair/mds is BSD-2-Clause and klauspost/compress is
-          # BSD-3-Clause. Exempting them keeps a package whose licence the
-          # detector cannot read from ever resolving to something outside
-          # the list.
+          # MIT, creachadair/mds is BSD-3-Clause and klauspost/compress is
+          # BSD-3-Clause alongside that Apache-2.0 section. Exempting them
+          # keeps a package whose licence the detector cannot read from ever
+          # resolving to something outside the list.
           #
           # The trade-off is that a licence change inside these four modules
           # would not be caught automatically, so their next version bump
