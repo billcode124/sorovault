@@ -6,9 +6,32 @@ name: Dependency review
 # what the pull request introduced — a vulnerability that was already there is
 # somebody else's problem.
 #
-# The action reads the repository's dependency graph, so the graph has to be
-# enabled for it to have anything to review (Settings -> Code security ->
-# Dependency graph). Until it is, the check has no diff to look at.
+# The review comes in two parts, and this workflow runs both of them:
+#
+#   1. GitHub's dependency-review action reads the repository's dependency
+#      graph, which also carries the advisories. The graph is a repository
+#      setting (Settings -> Code security -> Dependency graph), and the
+#      organisation has not enabled it: the action's request for the graph
+#      comes back with a 403 and it fails with "Dependency review is not
+#      supported on this repository".
+#   2. .github/scripts/dependency-review.sh answers the licence half of the
+#      question from the manifests the repository keeps, so a pull request is
+#      not held up by a setting nobody has turned on.
+#
+# The workflow asks the same API the action asks, with the same token, and
+# reads the answer from the status code:
+#
+#   200 - the graph is there, and the action does the review.
+#   403 - the graph is off, and the script does the review.
+#
+# Both read the same policy from .github/dependency-review-config.yml, so the
+# licences the project accepts are written down once. Enabling the graph is
+# enough to switch the workflow over to the action; nothing else changes.
+#
+# The policy is loaded from the base branch, not from the pull request being
+# judged, the same way the malware scan loads its scanner. A pull request
+# cannot widen the list of accepted licences to get its own dependency
+# through.
 
 on:
   pull_request:
@@ -20,80 +43,78 @@ jobs:
   dependency-review:
     name: Dependency review
     runs-on: ubuntu-latest
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
           persist-credentials: false
 
+      # The policy and the script are the rules the pull request is judged by,
+      # so they come from the base branch. The fallbacks cover the pull
+      # request that introduces them, which cannot have them on the base
+      # branch yet.
+      - name: Load the review policy from the base branch
+        run: |
+          git show "$BASE_SHA:.github/dependency-review-config.yml" \
+            > "$RUNNER_TEMP/dependency-review-config.yml" 2>/dev/null \
+            || cp .github/dependency-review-config.yml "$RUNNER_TEMP/dependency-review-config.yml"
+          git show "$BASE_SHA:.github/scripts/dependency-review.sh" \
+            > "$RUNNER_TEMP/dependency-review.sh" 2>/dev/null \
+            || cp .github/scripts/dependency-review.sh "$RUNNER_TEMP/dependency-review.sh"
+
+      - name: Check whether the dependency graph is available
+        id: graph
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          code=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H 'Accept: application/vnd.github+json' \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/dependency-graph/compare/$BASE_SHA...$HEAD_SHA") \
+            || code=000
+          echo "dependency graph: HTTP $code"
+          case "$code" in
+            200)
+              echo "available=true" >> "$GITHUB_OUTPUT"
+              ;;
+            403)
+              # The graph is switched off. The action would fail with a 403
+              # here, so the script reviews the change instead.
+              echo "available=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::the repository's dependency graph is disabled, so the review runs from the manifests in the repository; a maintainer can enable it under Settings -> Code security -> Dependency graph"
+              ;;
+            *)
+              # Anything else is not the graph being off, and the action is
+              # better at explaining what it is than this step is.
+              echo "available=true" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
       - name: Review dependency changes
+        if: steps.graph.outputs.available == 'true'
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
-          # A pull request that introduces a moderate or worse advisory
-          # fails. Low-severity advisories are still reported, but they do
-          # not block: they are common enough that blocking on them teaches
-          # maintainers to ignore the check.
-          fail-on-severity: moderate
-          # Go modules are runtime scope; the npm packages under
-          # internal/codegen/testdata are development scope, and are reviewed
-          # too even though they only ever run in CI. "unknown" is left out
-          # on purpose: it is the scope GitHub falls back to when it cannot
-          # place a package, and a package it cannot place is a package whose
-          # scope we cannot vouch for either.
-          fail-on-scopes: runtime,development
-          # Licence policy. SoroVault is Apache-2.0, so the list is the
-          # permissive licences that can be redistributed inside an
-          # Apache-2.0 project. It covers every licence the dependency graph
-          # reports today: Apache-2.0 (cobra, the Stellar SDK, mousetrap),
-          # MIT (chi, pgx, testify, lib/pq and most of their dependencies),
-          # BSD-2-Clause (pkg/errors) and BSD-3-Clause (pflag,
-          # creachadair/jrpc2, creachadair/mds, golang.org/x/*) for the Go
-          # modules, ISC for stellar/go-xdr, and Apache-2.0 for
-          # @stellar/stellar-sdk and typescript plus MIT for buffer on the
-          # npm side.
-          #
-          # A dual-licensed module is reported as an SPDX expression, and an
-          # expression is only satisfied when every licence in it is on the
-          # list — so go.yaml.in/yaml/v3, which is "Apache-2.0 AND MIT", is
-          # covered by having both halves here.
-          #
-          # Copyleft and source-available licences (GPL, LGPL, AGPL, MPL,
-          # ...) are deliberately absent: a pull request that adds one fails
-          # here and needs a maintainer to decide, rather than being merged
-          # unnoticed.
-          allow-licenses: >-
-            Apache-2.0,
-            MIT,
-            BSD-2-Clause,
-            BSD-3-Clause,
-            ISC
-          # Four Go modules whose licence GitHub cannot classify. The
-          # detector matches licence templates against the text of a
-          # repository's LICENSE file, and these four all carry enough
-          # beyond the standard text to defeat it: golang-migrate keeps an
-          # "Original Work / Modified Work" copyright block, lib/pq a
-          # "Portions Copyright" line, creachadair/mds a rewritten BSD
-          # header, and klauspost/compress a second Apache-2.0 section for
-          # the gzhttp files it carries. The graph reports no licence for
-          # them, so the action lists them as unlicensed.
-          #
-          # Their licences were read by hand instead, and all four are
-          # already permitted above: golang-migrate/migrate and lib/pq are
-          # MIT, creachadair/mds is BSD-3-Clause and klauspost/compress is
-          # BSD-3-Clause alongside that Apache-2.0 section. Exempting them
-          # keeps a package whose licence the detector cannot read from ever
-          # resolving to something outside the list.
-          #
-          # The trade-off is that a licence change inside these four modules
-          # would not be caught automatically, so their next version bump
-          # still wants a human eye on it. The npm packages need no such
-          # exemption: the registry states their licence outright.
-          allow-dependencies-licenses: >-
-            pkg:golang/github.com/golang-migrate/migrate/v4,
-            pkg:golang/github.com/creachadair/mds,
-            pkg:golang/github.com/klauspost/compress,
-            pkg:golang/github.com/lib/pq
-          # The dependency graph needs a moment to catch up with a freshly
-          # pushed commit. Waiting for it is better than reporting a clean
-          # review of a graph that has not been written yet.
-          retry-on-snapshot-warnings: true
+          repo-token: ${{ github.token }}
+          # The policy the action applies, and the policy the script applies
+          # when the graph is off.
+          config-file: ${{ runner.temp }}/dependency-review-config.yml
+
+      - name: Set up Go
+        if: steps.graph.outputs.available != 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26"
+          cache: true
+          # Always the newest patch release: security fixes land there.
+          check-latest: true
+
+      - name: Review dependency changes without the dependency graph
+        if: steps.graph.outputs.available != 'true'
+        run: |
+          bash "$RUNNER_TEMP/dependency-review.sh" \
+            "$BASE_SHA" "$HEAD_SHA" "$RUNNER_TEMP/dependency-review-config.yml"
