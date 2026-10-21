@@ -5,6 +5,7 @@ go 1.25.11
 require (
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/golang-migrate/migrate/v4 v4.20.1
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stellar/go-stellar-sdk v0.7.3
